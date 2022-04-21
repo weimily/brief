@@ -1173,6 +1173,7 @@ export let Commands = {
 
     emptyTrash: function cmd_emptyTrash() {
         ViewList.db.query(ViewList.getQueryForView('trash-folder')).markDeleted('deleted');
+        ViewList.db.cleanupEntries();
     },
 
     toggleSelectedEntryRead: function cmd_toggleSelectedEntryRead() {
