@@ -913,8 +913,20 @@ export class Database {
 
         return tree;
     }
+
+    async cleanupEntries() {
+        //TODO: Do not delete entries that are in the feed now.
+        let query = this.query({
+            deleted: 'deleted'
+        });
+        let ids = await query.getIds();
+        for(const id of ids.values()) {
+            let tx = this.db().transaction(['entries'], 'readwrite');
+            let request = tx.objectStore('entries').delete(id);
+            DbUtil.requestPromise(request);
+        }
+    }
 }
-//TODO: database cleanup
 //TODO: bookmark to starred sync
 
 /**
