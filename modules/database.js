@@ -924,6 +924,10 @@ export class Database {
             let tx = this.db().transaction(['entries'], 'readwrite');
             let request = tx.objectStore('entries').delete(id);
             DbUtil.requestPromise(request);
+
+            let tx2 = this.db().transaction(['revisions'], 'readwrite');
+            let request2 = tx2.objectStore('revisions').delete(id);
+            DbUtil.requestPromise(request2);
         }
     }
 }
