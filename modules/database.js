@@ -942,12 +942,26 @@ export class Database {
 
     async cleanupEntries() {
         //TODO: Do not delete entries that are in the feed now.
+        let feedExpiryTimes = {};
+        let txFeeds = this.db().transaction(['feeds'], 'readonly');
+        let feeds = await DbUtil.requestPromise(txFeeds.objectStore('feeds').getAll());
+        for(let feed of feeds) {
+            let entryAgeLimit = (feed.entryAgeLimit || Prefs.get('database.entryExpirationAge'));
+            feedExpiryTimes[feed.feedID] = Date.now() - entryAgeLimit * 86400000;
+        }
+
         let query = this.query({
             deleted: 'deleted'
         });
         let ids = await query.getIds();
         for(const id of ids.values()) {
             let tx = this.db().transaction(['entries', 'revisions'], 'readwrite');
+
+            let entry = await DbUtil.requestPromise(tx.objectStore('entries').get(id));
+            if (!entry || entry.date >= feedExpiryTimes[entry.feedID]) {
+                continue; // Skip entries that are not expired
+            }
+
             let request = tx.objectStore('entries').delete(id);
             DbUtil.requestPromise(request);
 
