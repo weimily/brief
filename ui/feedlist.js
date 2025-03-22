@@ -1172,9 +1172,11 @@ export let Commands = {
     },
 
     emptyTrash: function cmd_emptyTrash() {
-        ViewList.db.query(ViewList.getQueryForView('trash-folder')).markDeleted('deleted');
-        ViewList.db.cleanupHiddenFeeds();
-        ViewList.db.cleanupEntries();
+        ViewList.db.query(ViewList.getQueryForView('trash-folder')).markDeleted('deleted')
+            .then(() => {
+                ViewList.db.cleanupHiddenFeeds();
+                ViewList.db.cleanupEntries();
+            });
     },
 
     toggleSelectedEntryRead: function cmd_toggleSelectedEntryRead() {
