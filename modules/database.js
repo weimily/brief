@@ -950,10 +950,10 @@ export class Database {
             feedExpiryTimes[feed.feedID] = Date.now() - entryAgeLimit * 86400000;
         }
 
-        let query = this.query({
-            deleted: 'deleted'
-        });
-        let ids = await query.getIds();
+        let ids = await this.query({deleted: 'deleted'}).getIds();
+
+        let deletedCount = 0;
+
         for(const id of ids.values()) {
             let tx = this.db().transaction(['entries', 'revisions'], 'readwrite');
 
@@ -962,52 +962,75 @@ export class Database {
                 continue; // Skip entries that are not expired
             }
 
-            await this.deleteEntry(id, tx);
+            try {
+                await this.deleteEntry(entry, tx);
+                await DbUtil.transactionPromise(tx);
+            } catch (error) {
+                console.error(`Brief: failed to delete entry ${entry.id}:`, error);
+            }
+
+            deletedCount++;
         }
+
+        console.log(`Brief: cleaned up ${deletedCount} entries`);
     }
 
     /**
      * Deletes an entry and its associated revisions from the database.
      *
-     * @param {number} id
+     * @param {Object} entry
      * @param {IDBTransaction} tx
-     * @return {Promise}
      */
-    async deleteEntry(id, tx) {
-        let request = tx.objectStore('entries').delete(id);
-        DbUtil.requestPromise(request);
+    async deleteEntry(entry, tx) {
+        if (!entry) {
+            console.warn(`Brief: entry ${entry.id} not found`);
+            return;
+        }
 
-        let request2 = tx.objectStore('revisions').delete(id);
-        DbUtil.requestPromise(request2);
+        await DbUtil.requestPromise(tx.objectStore('entries').delete(entry.id));
+
+        let revisions = entry.revisions || [];
+        await Promise.all(revisions.map(
+            ({id}) => DbUtil.requestPromise(tx.objectStore('revisions').delete(id))
+        ));
     }
 
     async cleanupHiddenFeeds() {
+        let transaction = this.db().transaction(['feeds'], 'readonly');
+        let feeds = await DbUtil.requestPromise(transaction.objectStore('feeds').getAll());
 
-        var transaction = this._db.transaction(['feeds'], 'readonly');
-        var objectStore = transaction.objectStore('feeds');
+        let deletedCount = 0;
 
-        const request = objectStore.getAll();
-        request.onsuccess = async ()=> {
-            const feeds = request.result;
-
-            for (let feed of feeds) {
-                if (feed.hidden == 0) {
-                    continue;
-                }
-                let query = new Query({
-                    feeds: [feed.feedID],
-                });
-                let ids = await query.getIds();
-                for(const id of ids.values()) {
-                    let tx = this.db().transaction(['entries', 'revisions'], 'readwrite');
-                    await this.deleteEntry(id, tx);
-                }
-
-                let tx = this.db().transaction(['feeds'], 'readwrite');
-                let request = tx.objectStore('feeds').delete(feed.feedID);
-                DbUtil.requestPromise(request);
+        for (let feed of feeds) {
+            if (feed.hidden == 0) {
+                continue;
             }
+
+            try {
+                let ids = await this.query({feeds: [feed.feedID]}).getIds();
+
+                let tx = this.db().transaction(['feeds', 'entries', 'revisions'], 'readwrite');
+
+                if (ids.length > 0) {
+                    await Promise.all(ids.map(async (entryId) => {
+                        let entry = await DbUtil.requestPromise(
+                            tx.objectStore('entries').get(entryId)
+                        );
+                        await this.deleteEntry(entry, tx);
+                    }));
+                }
+
+                await DbUtil.requestPromise(tx.objectStore('feeds').delete(feed.feedID));
+
+                await DbUtil.transactionPromise(tx);
+            } catch (error) {
+                console.error(`Brief: failed to delete feed ${feed.feedID}:`, error);
+            }
+
+            deletedCount++;
         }
+
+        console.log(`Brief: cleaned up ${deletedCount} hidden feeds`);
     }
 }
 //TODO: bookmark to starred sync
