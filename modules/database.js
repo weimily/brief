@@ -3,6 +3,8 @@ import {updateFavicon} from "./favicon-fetcher.js";
 import {Comm, parseDateValue, asArray, hashString} from "./utils.js";
 
 
+const BATCH_SIZE = 1000;
+
 /**
  * Database design and considerations
  *
@@ -928,12 +930,12 @@ export class Database {
 
         let deletedCount = 0;
 
-        for(const id of ids.values()) {
+        await this.processInBatches(ids, BATCH_SIZE, async (id) => {
             let tx = this.db().transaction(['entries', 'revisions'], 'readwrite');
 
             let entry = await DbUtil.requestPromise(tx.objectStore('entries').get(id));
             if (!entry || entry.date >= feedExpiryTimes[entry.feedID]) {
-                continue; // Skip entries that are not expired
+                return; // Skip entries that are not expired
             }
 
             try {
@@ -944,9 +946,27 @@ export class Database {
             }
 
             deletedCount++;
-        }
+        });
 
         console.log(`Brief: cleaned up ${deletedCount} entries`);
+    }
+
+    /**
+     * Splits an array into batches of a given size and calls the given callback with each batch.
+     *
+     * @param {Array} items
+     * @param {number} batchSize
+     * @param {{ (id: any): Promise<void> }} callback
+     */
+    async processInBatches(items, batchSize, callback) {
+        const batches = [];
+        for (let i = 0; i < items.length; i += batchSize) {
+            batches.push(items.slice(i, i + batchSize));
+        }
+
+        for (const batch of batches) {
+            await Promise.all(batch.map(callback));
+        }
     }
 
     /**
@@ -986,12 +1006,12 @@ export class Database {
                 let tx = this.db().transaction(['feeds', 'entries', 'revisions'], 'readwrite');
 
                 if (ids.length > 0) {
-                    await Promise.all(ids.map(async (entryId) => {
+                    await this.processInBatches(ids, BATCH_SIZE, async (entryId) => {
                         let entry = await DbUtil.requestPromise(
                             tx.objectStore('entries').get(entryId)
                         );
                         await this.deleteEntry(entry, tx);
-                    }));
+                    });
                 }
 
                 await DbUtil.requestPromise(tx.objectStore('feeds').delete(feed.feedID));
