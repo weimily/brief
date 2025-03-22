@@ -962,13 +962,24 @@ export class Database {
                 continue; // Skip entries that are not expired
             }
 
-            let request = tx.objectStore('entries').delete(id);
-            DbUtil.requestPromise(request);
-
-            let request2 = tx.objectStore('revisions').delete(id);
-            DbUtil.requestPromise(request2);
+            await this.deleteEntry(id, tx);
         }
-    },
+    }
+
+    /**
+     * Deletes an entry and its associated revisions from the database.
+     *
+     * @param {number} id
+     * @param {IDBTransaction} tx
+     * @return {Promise}
+     */
+    async deleteEntry(id, tx) {
+        let request = tx.objectStore('entries').delete(id);
+        DbUtil.requestPromise(request);
+
+        let request2 = tx.objectStore('revisions').delete(id);
+        DbUtil.requestPromise(request2);
+    }
 
     async cleanupHiddenFeeds() {
 
@@ -989,11 +1000,7 @@ export class Database {
                 let ids = await query.getIds();
                 for(const id of ids.values()) {
                     let tx = this.db().transaction(['entries', 'revisions'], 'readwrite');
-                    let request = tx.objectStore('entries').delete(id);
-                    DbUtil.requestPromise(request);
-        
-                    let request2 = tx.objectStore('revisions').delete(id);
-                    DbUtil.requestPromise(request2);
+                    await this.deleteEntry(id, tx);
                 }
 
                 let tx = this.db().transaction(['feeds'], 'readwrite');
