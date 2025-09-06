@@ -508,6 +508,18 @@ export class Database {
     }
 
     /**
+     * @param {string[]} feedIdsToDelete
+     */
+    async permanentlyDeleteFeeds(feedIdsToDelete) {
+        if (!Comm.master || feedIdsToDelete.length === 0) {
+            return;
+        }
+        this._feeds = this._feeds.filter(f => !feedIdsToDelete.includes(f.feedID));
+        await this.saveFeeds();
+        Comm.broadcast('feedlist-updated', { feeds: this.feeds });
+    }
+
+    /**
      * @param {Feed | Feed[] | null} feeds
      */
     async expireEntries(feeds=null) {
@@ -940,7 +952,6 @@ export class Database {
         return tree;
     }
 }
-//TODO: database cleanup
 //TODO: bookmark to starred sync
 
 /**

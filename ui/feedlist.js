@@ -1,5 +1,6 @@
 import {Prefs} from "/modules/prefs.js";
 import * as OPML from "/modules/opml.js";
+import {runDatabaseCleanup} from "/modules/cleanup.js";
 import {Comm, debounced, getElement, openBackgroundTab} from "/modules/utils.js";
 import {FeedView} from "./feedview.js";
 
@@ -127,6 +128,9 @@ TreeView.prototype = {
     _updateElement: function TreeView__updateElement(aElement, aModel) {
         const {id, title, icon, unreadCount, loading, error, collapsed, children} = aModel;
         let element = this._resolveElement(aElement);
+        if (element === null) {
+            return;
+        }
         const oldModel = this._elementModelCache.get(element);
         this._elementModelCache.set(element, {...oldModel, ...aModel});
 
@@ -1172,7 +1176,10 @@ export let Commands = {
     },
 
     emptyTrash: function cmd_emptyTrash() {
-        ViewList.db.query(ViewList.getQueryForView('trash-folder')).markDeleted('deleted');
+        ViewList.db.query(ViewList.getQueryForView('trash-folder')).markDeleted('deleted')
+            .then(() => {
+                runDatabaseCleanup({ db: ViewList.db, prefs: Prefs, comm: Comm });
+            });
     },
 
     toggleSelectedEntryRead: function cmd_toggleSelectedEntryRead() {
